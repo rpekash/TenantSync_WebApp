@@ -21,12 +21,11 @@ function Login() {
     const validationErrors = Validation(values);
     setErrors(validationErrors);
 
-    // Proceed if there are no validation errors
     if (!validationErrors.email && !validationErrors.password) {
       axios.post('http://localhost:8081/login', values)
         .then(res => {
           if (res.data === "Success") {
-            navigate('/home'); // Navigate to home on success
+            navigate('/home'); 
           } else {
             alert("No record existed");
           }
