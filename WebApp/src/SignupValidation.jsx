@@ -36,7 +36,7 @@ function Validation(values) {
 
   if (values.role === "") {
     error.role = "Required";
-  } else if (!["tenant", "landlord"].includes(values.role)) {
+  } else if (!["tenant", "landlord","maintenance"].includes(values.role)) {
     error.role = "Invalid Role";
   } else {
     error.role = "";

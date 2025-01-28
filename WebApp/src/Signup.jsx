@@ -10,7 +10,7 @@ function Signup() {
     name: '',
     email: '',
     password: '',
-    role: "tenant"
+    role: ""
   });
 
   const navigate = useNavigate();
@@ -113,6 +113,8 @@ function Signup() {
             >
               <option value='tenant'>Tenant</option>
               <option value='landlord'>Landlord</option>
+              <option value='maintenance'>Maintenance</option>
+
             </select>
             {errors.role && <span className='text-danger'>{errors.role}</span>}
           </div>

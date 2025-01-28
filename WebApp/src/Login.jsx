@@ -24,8 +24,10 @@ function Login() {
     if (!validationErrors.email && !validationErrors.password) {
       axios.post('http://localhost:8081/login', values)
         .then(res => {
-          if (res.data === "Success") {
-            navigate('/home'); 
+          if (res.data.message === "Success") {
+            // Save tenantId in localStorage or state
+            localStorage.setItem('tenantId', res.data.userId); // Save user ID for dynamic usage
+            navigate('/home');
           } else {
             alert("No record existed");
           }
