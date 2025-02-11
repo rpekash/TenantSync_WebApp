@@ -1,4 +1,15 @@
+import React from "react";
+import { useNavigate } from "react-router-dom";
+
 function Home() {
+    const navigate = useNavigate();
+
+    // Logout Function
+    const handleLogout = () => {
+        localStorage.removeItem("user"); // Remove user session
+        navigate("/login"); // Redirect to login page
+    };
+
     return (
         <>
             <header className="header">
@@ -7,11 +18,12 @@ function Home() {
                     <a href="#dashboard">Dashboard</a>
                     <a href="#payments">Payments</a>
                     <a href="/maintenance-requests">Maintenance</a>
-                    <a href="#bulletin">Bulletin</a>
+                    <a href="/bulletin-board">Bulletin</a>
                 </nav>
                 <div className="profile">
                     <span className="notification">🔔</span>
                     <button className="profile-button">Profile</button> 
+                    <button className="logout-button" onClick={handleLogout}>Logout</button>
                 </div>
             </header>
 

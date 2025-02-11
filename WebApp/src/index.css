@@ -233,3 +233,18 @@ button:hover {
 button[type="submit"] {
   margin-top: 10px;
 }
+
+.logout-button {
+  background-color: #dc3545; /* Red color */
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  margin-left: 10px;
+  cursor: pointer;
+  border-radius: 5px;
+  font-size: 14px;
+}
+
+.logout-button:hover {
+  background-color: #c82333;
+}

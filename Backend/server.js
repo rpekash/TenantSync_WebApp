@@ -14,7 +14,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-const apiKey = process.env.GEMINI_API_KEY || "AIzaSyASBWrK53bGRmSkqS7CkGztYT-Shfgc0Cw";
+const apiKey = process.env.GEMINI_API_KEY || "AAIzaSyAiuTeUXIUxfSfTvJRN8X4Q27rzXfvizd4";
 const genAI = new GoogleGenerativeAI(apiKey);
 const generationConfig = { temperature: 0.4, topP: 1, topK: 32, maxOutputTokens: 4096 };
 
@@ -146,12 +146,12 @@ app.post("/maintenance-request", upload.array("media", 10), async (req, res) => 
   }
 });
 
-// Signup route
+
 app.post("/signup", (req, res) => {
   console.log("Received data:", req.body);
 
-  const q = "INSERT INTO users (`name`, `email`, `phone`, `password_hash`, role) VALUES (?, ?, ?, ?, ?)";
-  const values = [
+  const insertUserQuery = "INSERT INTO users (`name`, `email`, `phone`, `password_hash`, `role`) VALUES (?, ?, ?, ?, ?)";
+  const userValues = [
     req.body.values.name,
     req.body.values.email,
     req.body.values.phone,
@@ -159,25 +159,79 @@ app.post("/signup", (req, res) => {
     req.body.values.role,
   ];
 
-  db.query(q, values, (err, data) => {
+  db.query(insertUserQuery, userValues, (err, result) => {
     if (err) {
       console.error("Database insertion error:", err);
       return res.status(500).json({ error: "Database insertion error" });
     }
-    return res.json("User created successfully.");
+
+    const userId = result.insertId; 
+    console.log("User created successfully with ID:", userId);
+
+    if (req.body.values.role === "maintenance") {
+      const insertMaintenanceQuery = "INSERT INTO maintenanceteam (`team_id`, `name`, `contact_info`, `availability`, `type_of_maintenance`) VALUES (?, ?, ?, ?, ?)";
+      const maintenanceValues = [
+        userId,
+        req.body.values.name,
+        req.body.values.email,
+        null, 
+        "General", 
+      ];
+
+      db.query(insertMaintenanceQuery, maintenanceValues, (maintenanceErr) => {
+        if (maintenanceErr) {
+          console.error("Error inserting into maintenanceteam:", maintenanceErr);
+          return res.status(500).json({ error: "Error inserting into maintenanceteam" });
+        }
+        console.log("Maintenance worker added to team successfully.");
+      });
+    }
+
+    return res.json({ message: "User created successfully." });
   });
 });
 
 app.post("/login", (req, res) => {
   const sql = "SELECT * FROM users WHERE email = ? AND password_hash = ?";
-  db.query(sql, [req.body.email, req.body.password], (err, data) => {
+  
+  db.query(sql, [req.body.email, req.body.password], (err, userData) => {
     if (err) {
       console.error("Database query error:", err);
-      return res.json("Error");
+      return res.status(500).json({ error: "Database query error" });
     }
-    if (data.length > 0) {
-      // Send user ID back to the client
-      return res.json({ message: "Success", userId: data[0].user_id });
+
+    if (userData.length > 0) {
+      const user = userData[0];
+
+      const checkMaintenanceQuery = "SELECT * FROM maintenanceteam WHERE team_id = ?";
+      
+      db.query(checkMaintenanceQuery, [user.user_id], (maintenanceErr, maintenanceData) => {
+        if (maintenanceErr) {
+          console.error("Error checking maintenance team:", maintenanceErr);
+          return res.status(500).json({ error: "Error checking maintenance team" });
+        }
+
+        if (maintenanceData.length > 0) {
+          const maintenanceWorker = maintenanceData[0];
+
+          return res.json({
+            message: "Success",
+            userId: user.user_id,
+            role: user.role,
+            isMaintenance: true,
+            teamId: maintenanceWorker.team_id,
+            availability: maintenanceWorker.availability,
+            typeOfMaintenance: maintenanceWorker.type_of_maintenance
+          });
+        } else {
+          return res.json({
+            message: "Success",
+            userId: user.user_id,
+            role: user.role,
+            isMaintenance: false
+          });
+        }
+      });
     } else {
       return res.json({ message: "Failed" });
     }
@@ -195,7 +249,6 @@ app.post("/chatbot", async (req, res) => {
     return res.status(400).json({ error: "Missing tenantId or message." });
   }
 
-  // Initialize tenant-specific conversation data
   if (!aiRequestData[tenantId]) {
     aiRequestData[tenantId] = {
       description: "",
@@ -218,7 +271,6 @@ app.post("/chatbot", async (req, res) => {
   try {
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash", generationConfig });
 
-    //AI Predicts if Request Is Complete
     const evaluationPrompt = `
       Here is the maintenance issue description:
       "${requestData.description}"
@@ -296,7 +348,7 @@ app.post("/chatbot", async (req, res) => {
           "Normal", // Default priority
           mediaLink,
           new Date(),
-          null, // No resolved date yet
+          null,
           assignedWorker.team_id,
           maintenanceType,
           timeScheduled,
@@ -343,6 +395,201 @@ app.post("/chatbot", async (req, res) => {
     console.error("Error in AI chatbot:", error);
     return res.status(500).json({ error: "Failed to process chatbot message." });
   }
+});
+
+
+//----------------------------
+
+// Endpoint to fetch today's bookings for a worker (excluding completed requests)
+app.get("/bookings/:workerId/:date", (req, res) => {
+  const { workerId, date } = req.params;
+
+  const query = `
+    SELECT * FROM maintenancerequests
+    WHERE assigned_to = ? 
+    AND DATE(date_submitted) = ? 
+    AND status != 'Closed'  -- Exclude completed requests
+  `;
+
+  db.query(query, [workerId, date], (err, results) => {
+    if (err) {
+      console.error("Error fetching bookings:", err);
+      return res.status(500).json({ error: "Error fetching bookings" });
+    }
+    res.json(results);
+  });
+});
+
+
+app.post("/complete-request", (req, res) => {
+  const { id, timeTaken } = req.body;
+
+  console.log(`Completing maintenance request: ID=${id}, timeTaken=${timeTaken}`);
+
+  const updateQuery = `
+    UPDATE maintenancerequests
+    SET status = 'Closed', date_resolved = NOW(), time_taken = ?
+    WHERE request_id = ?
+  `;
+
+  db.query(updateQuery, [timeTaken, id], (updateErr, results) => {
+    if (updateErr) {
+      console.error("Error updating request:", updateErr);
+      return res.status(500).json({ error: "Error updating request" });
+    }
+
+    console.log(`Updated Request ID ${id}:`, results);
+
+    // Fetch updated data to confirm changes
+    db.query("SELECT time_scheduled, time_taken, date_resolved FROM maintenancerequests WHERE request_id = ?", [id], (err, updatedRows) => {
+      if (err) {
+        console.error("Error fetching updated request data:", err);
+        return res.status(500).json({ error: "Error fetching updated request data" });
+      }
+
+      console.log(`After Update - Request ID ${id}:`, updatedRows[0]);
+      res.json({ message: "Request marked as completed successfully.", updatedData: updatedRows[0] });
+    });
+  });
+});
+
+// TIMER
+app.post("/update-timer", (req, res) => {
+  const { requestId, timeTaken } = req.body;
+
+  console.log(`Received timer update: ID=${requestId}, timeTaken=${timeTaken}`);
+
+  const query = `
+    UPDATE maintenancerequests
+    SET time_taken = ?
+    WHERE request_id = ?
+  `;
+
+  db.query(query, [timeTaken, requestId], (err, results) => {
+    if (err) {
+      console.error("Error updating timer:", err);
+      return res.status(500).json({ error: "Error updating timer" });
+    }
+    console.log(`Timer updated successfully for Request ID ${requestId}:`, results);
+    res.json({ message: "Timer updated successfully." });
+  });
+});
+
+// Worker Availability Update
+app.post("/update-availability", (req, res) => {
+  const { workerId, availability } = req.body;
+
+  console.log(`Updating availability for Worker ID=${workerId}, New Availability=${availability}`);
+
+  const query = "UPDATE maintenanceteam SET availability = ? WHERE team_id = ?";
+  db.query(query, [availability, workerId], (err, result) => {
+    if (err) {
+      console.error("Error updating availability:", err);
+      return res.status(500).json({ error: "Error updating availability" });
+    }
+    
+    console.log(`Worker ID ${workerId} availability updated to ${availability}`);
+    res.json({ message: "Availability updated successfully." });
+  });
+});
+
+
+app.post("/update-maintenance-type", (req, res) => {
+  const { workerId, typeOfMaintenance } = req.body;
+
+  if (!workerId || !typeOfMaintenance) {
+    return res.status(400).json({ error: "Missing workerId or typeOfMaintenance" });
+  }
+
+  const query = "UPDATE maintenanceteam SET type_of_maintenance = ? WHERE team_id = ?";
+  db.query(query, [typeOfMaintenance, workerId], (err, result) => {
+    if (err) {
+      console.error("Error updating maintenance type:", err);
+      return res.status(500).json({ error: "Failed to update maintenance type." });
+    }
+    
+    console.log(`Worker ID ${workerId} type updated to ${typeOfMaintenance}`);
+    res.json({ message: "Maintenance type updated successfully." });
+  });
+});
+
+
+//-------------------------
+
+
+// Create a New Bulletin Post
+app.post("/create-post", (req, res) => {
+  const { user_id, user_role, title, content, category } = req.body;
+  if (!user_id || !user_role || !title || !content || !category) {
+    return res.status(400).json({ error: "All fields are required." });
+  }
+
+  const query = `INSERT INTO bulletin_posts (user_id, user_role, title, content, category, moderated) VALUES (?, ?, ?, ?, ?, FALSE)`;
+  db.query(query, [user_id, user_role, title, content, category], (err, result) => {
+    if (err) {
+      console.error("Error creating post:", err);
+      return res.status(500).json({ error: "Failed to create post." });
+    }
+    res.json({ message: "Post created successfully.", postId: result.insertId });
+  });
+});
+
+// Fetch All Bulletin Posts (Only Moderated)
+app.get("/get-posts", (req, res) => {
+  const query = "SELECT * FROM bulletin_posts WHERE moderated = TRUE ORDER BY created_at DESC";
+  db.query(query, (err, results) => {
+    if (err) {
+      console.error("Error fetching posts:", err);
+      return res.status(500).json({ error: "Failed to fetch posts." });
+    }
+    res.json(results);
+  });
+});
+
+// Add a Comment to a Post
+app.post("/add-comment", (req, res) => {
+  const { post_id, user_id, content } = req.body;
+  if (!post_id || !user_id || !content) {
+    return res.status(400).json({ error: "All fields are required." });
+  }
+
+  const query = `INSERT INTO bulletin_comments (post_id, user_id, content) VALUES (?, ?, ?)`;
+  db.query(query, [post_id, user_id, content], (err, result) => {
+    if (err) {
+      console.error("Error adding comment:", err);
+      return res.status(500).json({ error: "Failed to add comment." });
+    }
+    res.json({ message: "Comment added successfully." });
+  });
+});
+
+// Fetch Comments for a Post
+app.get("/get-comments/:post_id", (req, res) => {
+  const { post_id } = req.params;
+  const query = "SELECT * FROM bulletin_comments WHERE post_id = ? ORDER BY created_at ASC";
+
+  db.query(query, [post_id], (err, results) => {
+    if (err) {
+      console.error("Error fetching comments:", err);
+      return res.status(500).json({ error: "Failed to fetch comments." });
+    }
+    res.json(results);
+  });
+});
+
+// Moderate Posts (Admin or Landlord)
+app.post("/moderate-post", (req, res) => {
+  const { post_id, approved } = req.body;
+  if (!post_id) return res.status(400).json({ error: "Post ID is required." });
+
+  const query = "UPDATE bulletin_posts SET moderated = ? WHERE post_id = ?";
+  db.query(query, [approved, post_id], (err) => {
+    if (err) {
+      console.error("Error moderating post:", err);
+      return res.status(500).json({ error: "Failed to moderate post." });
+    }
+    res.json({ message: `Post ${approved ? "approved" : "rejected"}.` });
+  });
 });
 
 // Start the server
