@@ -6,7 +6,9 @@ import Login from "./Login";
 import Signup from "./Signup";
 import MaintenancePage from "./MaintenancePage";
 import BulletinBoard from "./BulletinBoard";
-
+import LandlordDashboard from "./LandlordDashboard";
+import PaymentPage from "./PaymentPage";
+import PaymentSuccess from "./PaymentSuccess";  // Create this component
 
 function App() {
   console.log("App component rendering");
@@ -20,6 +22,10 @@ function App() {
         <Route path="/bulletin-board" element={<BulletinBoard />} /> 
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
+        <Route path="/landlord-dashboard" element={<LandlordDashboard />} />
+        <Route path="/Payment-Page" element={<PaymentPage />} />
+        <Route path="/payment-success" element={<PaymentSuccess />} />
+
       </Routes>
     </BrowserRouter>
   );

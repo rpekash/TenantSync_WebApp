@@ -23,41 +23,39 @@ function Login() {
 
     if (!validationErrors.email && !validationErrors.password) {
       axios
-        .post("http://localhost:8081/login", values)
-        .then((res) => {
-          console.log("Login API Response:", res.data); // Debugging
+  .post("http://localhost:8081/login", values, { withCredentials: true }) // Ensure credentials are sent
+  .then((res) => {
+    console.log("Login API Response:", res.data); 
 
-          if (res.data.message === "Success") {
-            // Clear localStorage
-            localStorage.removeItem("user");
+    if (res.data.message === "Success") {
+      localStorage.removeItem("user"); //  Clear previous session
+      const userData = {
+        message: res.data.message,
+        userId: res.data.userId,
+        role: res.data.role,
+        isMaintenance: res.data.isMaintenance || false, 
+      };
 
-            const userData = {
-              message: res.data.message,
-              userId: res.data.userId,
-              role: res.data.role,
-              isMaintenance: res.data.isMaintenance || false, // Default false for tenants
-            };
+      if (res.data.isMaintenance) {
+        userData.teamId = res.data.teamId;
+        userData.availability = res.data.availability;
+        userData.typeOfMaintenance = res.data.typeOfMaintenance;
+      }
 
-            if (res.data.isMaintenance) {
-              userData.teamId = res.data.teamId;
-              userData.availability = res.data.availability;
-              userData.typeOfMaintenance = res.data.typeOfMaintenance;
-            }
+      localStorage.setItem("user", JSON.stringify(userData));
 
-            localStorage.setItem("user", JSON.stringify(userData));
+      console.log("User saved to localStorage:", JSON.parse(localStorage.getItem("user")));
 
-            console.log("User saved to localStorage:", JSON.parse(localStorage.getItem("user"))); // Debugging
-
-            if (res.data.isMaintenance) {
-              navigate("/maintenance-page");
-            } else {
-              navigate("/home");
-            }
-          } else {
-            alert("No record existed");
-          }
-        })
-        .catch((err) => console.log("Login error:", err));
+      if (res.data.isMaintenance) {
+        navigate("/maintenance-page");
+      } else {
+        navigate("/home");
+      }
+    } else {
+      alert("No record existed");
+    }
+  })
+  .catch((err) => console.log("Login error:", err));
     }
   };
 

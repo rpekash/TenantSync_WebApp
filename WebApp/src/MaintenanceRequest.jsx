@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
 function MaintenanceRequest() {
@@ -7,95 +7,80 @@ function MaintenanceRequest() {
   const [chatHistory, setChatHistory] = useState([]);
   const [currentMessage, setCurrentMessage] = useState("");
   const [autoSubmit, setAutoSubmit] = useState(false);
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    //  Fetch session to check if the user is logged in
+    axios.get("http://localhost:8081/check-session", { withCredentials: true })
+      .then((res) => setUser(res.data.user))
+      .catch(() => setUser(null)); // If session check fails, set user to null
+  }, []);
 
   const handleFileChange = (e) => {
     setMedia([...e.target.files]);
   };
 
   const handleManualSubmit = async () => {
-    const tenantId = localStorage.getItem("tenantId");
-    if (!tenantId) {
+    if (!user) {
       alert("User is not logged in. Please log in first.");
       return;
     }
   
     const formData = new FormData();
     formData.append("description", description);
-    formData.append("tenantId", tenantId);
+    formData.append("tenantId", user.userId); //  Use session user ID
     media.forEach((file) => {
       formData.append("media", file);
     });
-  
-    setChatHistory(prev => [...prev, { sender: "User", message: description }]);
+
+    setChatHistory((prev) => [...prev, { sender: "User", message: description }]);
   
     try {
-      const response = await axios.post("http://127.0.0.1:8081/maintenance-request", formData, {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
+      const response = await axios.post("http://localhost:8081/maintenance-request", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+        withCredentials: true, //  Required for authentication
       });
   
       if (response.data.message) {
-        setChatHistory(prev => [...prev, { sender: "System", message: response.data.message }]);
+        setChatHistory((prev) => [...prev, { sender: "System", message: response.data.message }]);
       }
-  
+
       if (response.data.aiPrediction) {
-        setChatHistory(prev => [...prev, { sender: "AI", message: `AI Predicted Issue: ${response.data.aiPrediction}` }]);
+        setChatHistory((prev) => [...prev, { sender: "AI", message: `AI Predicted Issue: ${response.data.aiPrediction}` }]);
       }
     } catch (error) {
       console.error("Error submitting maintenance request:", error);
-      setChatHistory(prev => [...prev, { sender: "System", message: "Failed to submit request. Please try again." }]);
+      setChatHistory((prev) => [...prev, { sender: "System", message: "Failed to submit request. Please try again." }]);
     }
   };
   
   const handleAutoSubmit = async () => {
-    const tenantId = localStorage.getItem("tenantId");
-    if (!tenantId) {
+    if (!user) {
       alert("User is not logged in. Please log in first.");
       return;
     }
   
     try {
-      const response = await axios.post("http://127.0.0.1:8081/chatbot", {
+      const response = await axios.post("http://localhost:8081/chatbot", {
         message: currentMessage,
-        tenantId, // Use dynamic tenantId
         media: media.map(file => ({ path: file.name })),
       }, {
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
+        withCredentials: true, //  Required for authentication
       });
   
       if (response.data.reply) {
-        setChatHistory(prev => [...prev, { sender: "AI", message: response.data.reply }]);
-  
+        setChatHistory((prev) => [...prev, { sender: "AI", message: response.data.reply }]);
+
         if (response.data.reply.toLowerCase().includes("ready to submit")) {
-          const formData = new FormData();
-          formData.append("description", description);
-          formData.append("tenantId", tenantId);
-          media.forEach(file => {
-            formData.append("media", file);
-          });
-  
-          const submitResponse = await axios.post("http://localhost:8081/maintenance-request", formData, {
-            headers: {
-              "Content-Type": "multipart/form-data",
-            },
-          });
-  
-          if (submitResponse.data.message) {
-            setChatHistory(prev => [...prev, { sender: "System", message: submitResponse.data.message }]);
-          }
-  
-          if (submitResponse.data.aiPrediction) {
-            setChatHistory(prev => [...prev, { sender: "AI", message: `AI Predicted Issue: ${submitResponse.data.aiPrediction}` }]);
-          }
+          handleManualSubmit();
         }
       }
     } catch (error) {
       console.error("Error in AI auto-submit:", error);
-      setChatHistory(prev => [...prev, { sender: "System", message: "Failed to process automatic submission. Please try again." }]);
+      setChatHistory((prev) => [...prev, { sender: "System", message: "Failed to process automatic submission. Please try again." }]);
     }
+
     setCurrentMessage("");
   };
   
@@ -104,13 +89,9 @@ function MaintenanceRequest() {
   
     if (currentMessage.trim() !== "") {
       setChatHistory((prev) => [...prev, { sender: "User", message: currentMessage }]);
-  
-      const tenantId = localStorage.getItem("tenantId");
-      if (!tenantId) {
-        setChatHistory((prev) => [
-          ...prev,
-          { sender: "System", message: "User is not logged in. Please log in first." },
-        ]);
+
+      if (!user) {
+        setChatHistory((prev) => [...prev, { sender: "System", message: "User is not logged in. Please log in first." }]);
         return;
       }
   
@@ -120,12 +101,10 @@ function MaintenanceRequest() {
         try {
           const response = await axios.post("http://localhost:8081/chatbot", {
             message: currentMessage,
-            tenantId, // Use dynamic tenant ID
-            media: media ? media.map((file) => ({ path: file.name })) : [],
+            media: media.map((file) => ({ path: file.name })),
           }, {
-            headers: {
-              "Content-Type": "application/json",
-            },
+            headers: { "Content-Type": "application/json" },
+            withCredentials: true, //  Required for authentication
           });
   
           if (response.data.reply) {
@@ -133,10 +112,7 @@ function MaintenanceRequest() {
           }
         } catch (error) {
           console.error("Error communicating with chatbot:", error);
-          setChatHistory((prev) => [
-            ...prev,
-            { sender: "System", message: "Failed to get a response from chatbot. Please try again." },
-          ]);
+          setChatHistory((prev) => [...prev, { sender: "System", message: "Failed to get a response from chatbot. Please try again." }]);
         }
       }
   
@@ -147,9 +123,12 @@ function MaintenanceRequest() {
   return (
     <div>
       <h1>Maintenance Request</h1>
+      {user ? <p>Logged in as: {user.role}</p> : <p>Please log in</p>}
+
       <button onClick={() => setAutoSubmit(!autoSubmit)}>
         Switch to {autoSubmit ? "Manual" : "Automatic"} Submission
       </button>
+
       <div>
         <div style={{ marginBottom: '20px' }}>
           {!autoSubmit && (
@@ -163,13 +142,14 @@ function MaintenanceRequest() {
               />
             </>
           )}
+
           <label>Upload Photos/Videos:</label>
           <input type="file" multiple onChange={handleFileChange} style={{ marginBottom: '10px' }} />
-          {!autoSubmit && (
-            <button onClick={handleManualSubmit}>Submit Maintenance Request</button>
-          )}
+
+          {!autoSubmit && <button onClick={handleManualSubmit}>Submit Maintenance Request</button>}
         </div>
       </div>
+
       <div className="chat-box" style={{ border: '1px solid #ccc', padding: '10px', height: '300px', overflowY: 'scroll', marginBottom: '20px' }}>
         {chatHistory.map((chat, index) => (
           <div key={index} style={{ marginBottom: '10px' }}>
@@ -177,6 +157,7 @@ function MaintenanceRequest() {
           </div>
         ))}
       </div>
+
       <form onSubmit={handleSendMessage} style={{ marginBottom: '20px' }}>
         <div>
           <label>Enter Message:</label>
